@@ -1,0 +1,13 @@
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+Datasource "db": PostgreSQL database "neondb", schema "public" at "ep-tiny-king-acfh0bks-pooler.sa-east-1.aws.neon.tech"
+
+The database is already in sync with the Prisma schema.
+
+Running generate... (Use --skip-generate to skip the generators)
+[2K[1A[2K[GRunning generate... - Prisma Client
+[2K[1A[2K[GEPERM: operation not permitted, rename 'C:\Users\G3.Marketing\github\Go-City\bac
+kend\node_modules\.prisma\client\query_engine-windows.dll.node.tmp27608' -> 
+'C:\Users\G3.Marketing\github\Go-City\backend\node_modules\.prisma\client\query_
+engine-windows.dll.node'
+

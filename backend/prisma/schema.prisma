@@ -1,0 +1,322 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  username    String   @unique
+  password    String
+  name        String
+  bio         String?
+  avatarUrl   String?
+  coverUrl    String?
+  userType    UserType @default(FAN)
+  sport       String[]
+  city        String?
+  state       String?
+  isVerified  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  posts             Post[]
+  comments          Comment[]
+  likes             Like[]
+  followers         Follow[]       @relation("following")
+  following         Follow[]       @relation("follower")
+  championships     Championship[] @relation("organizer")
+  registrations     Registration[]
+  notifications     Notification[]
+  sentNotifications Notification[] @relation("sender")
+  
+  teams             TeamMember[]
+  captainOf         Team[]
+  sentMessages      Message[]      @relation("SentMessages")
+  receivedMessages  Message[]      @relation("ReceivedMessages")
+  stories           Story[]
+  
+  @@map("users")
+}
+
+enum UserType {
+  FAN
+  ATHLETE
+  COACH
+  REFEREE
+  ORGANIZER
+  JOURNALIST
+}
+
+model Follow {
+  id          String   @id @default(uuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("follower",  fields: [followerId],  references: [id], onDelete: Cascade)
+  following User @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model Post {
+  id        String   @id @default(uuid())
+  content   String
+  imageUrl  String?
+  sport     String?
+  authorId  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments Comment[]
+  likes    Like[]
+
+  @@map("posts")
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  authorId  String
+  postId    String
+  createdAt DateTime @default(now())
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post   Post @relation(fields: [postId],   references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
+
+model Like {
+  id        String   @id @default(uuid())
+  userId    String
+  postId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postId])
+  @@map("likes")
+}
+
+model Championship {
+  id                   String             @id @default(uuid())
+  title                String
+  description          String
+  sport                String
+  imageUrl             String?
+  organizerId          String
+  status               ChampionshipStatus @default(DRAFT)
+  format               String
+  maxParticipants      Int?
+  registrationFee      Float              @default(0)
+  startDate            DateTime
+  endDate              DateTime
+  registrationDeadline DateTime
+  location             String
+  city                 String
+  state                String
+  rules                String?
+  prizes               String?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+
+  organizer     User           @relation("organizer", fields: [organizerId], references: [id])
+  registrations Registration[]
+  results       Result[]
+  matches       Match[]
+
+  @@map("championships")
+}
+
+enum ChampionshipStatus {
+  DRAFT
+  OPEN
+  CLOSED
+  ONGOING
+  FINISHED
+  CANCELLED
+}
+
+model Registration {
+  id             String             @id @default(uuid())
+  userId         String
+  championshipId String
+  status         RegistrationStatus @default(PENDING)
+  teamName       String?
+  participants   String[]
+  createdAt      DateTime           @default(now())
+
+  user         User         @relation(fields: [userId],         references: [id])
+  championship Championship @relation(fields: [championshipId], references: [id])
+  teamId       String?
+  team         Team?        @relation(fields: [teamId],         references: [id])
+
+  @@unique([userId, championshipId])
+  @@map("registrations")
+}
+
+enum RegistrationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model Result {
+  id             String   @id @default(uuid())
+  championshipId String
+  phase          String
+  team1          String
+  team2          String
+  score1         Int
+  score2         Int
+  date           DateTime
+  notes          String?
+  createdAt      DateTime @default(now())
+
+  championship Championship @relation(fields: [championshipId], references: [id])
+
+  @@map("results")
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  senderId  String?
+  type      NotificationType
+  message   String
+  read      Boolean          @default(false)
+  link      String?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  user   User  @relation(fields: [userId],  references: [id], onDelete: Cascade)
+  sender User? @relation("sender", fields: [senderId], references: [id])
+
+  @@map("notifications")
+}
+
+enum NotificationType {
+  NEW_FOLLOWER
+  POST_LIKE
+  POST_COMMENT
+  CHAMPIONSHIP_RESULT
+  REGISTRATION_APPROVED
+  REGISTRATION_REJECTED
+  NEW_CHAMPIONSHIP
+  TEAM_INVITE
+  PRIVATE_MESSAGE
+  MATCH_REMINDER
+}
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  logoUrl     String?
+  captainId   String
+  captain     User     @relation(fields: [captainId], references: [id])
+  sport       String
+  members     TeamMember[]
+  registrations Registration[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  match1 Match[] @relation("Team1Matches")
+  match2 Match[] @relation("Team2Matches")
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id       String           @id @default(uuid())
+  teamId   String
+  team     Team             @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User             @relation(fields: [userId], references: [id])
+  role     TeamMemberRole   @default(PLAYER)
+  status   TeamMemberStatus @default(PENDING)
+  joinedAt DateTime         @default(now())
+
+  @@unique([teamId, userId])
+  @@map("team_members")
+}
+
+enum TeamMemberStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum TeamMemberRole {
+  CAPTAIN
+  PLAYER
+  COACH
+}
+
+model Match {
+  id             String      @id @default(uuid())
+  championshipId String
+  championship   Championship @relation(fields: [championshipId], references: [id], onDelete: Cascade)
+  
+  team1Id        String?
+  team1          Team?       @relation("Team1Matches", fields: [team1Id], references: [id])
+  team2Id        String?
+  team2          Team?       @relation("Team2Matches", fields: [team2Id], references: [id])
+
+  score1         Int         @default(0)
+  score2         Int         @default(0)
+  
+  date           DateTime
+  location       String?
+  phase          String      
+  status         MatchStatus @default(SCHEDULED)
+  winnerId       String?
+
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@map("matches")
+}
+
+enum MatchStatus {
+  SCHEDULED
+  LIVE
+  FINISHED
+  CANCELLED
+}
+
+model Message {
+  id         String   @id @default(uuid())
+  content    String
+  senderId   String
+  sender     User     @relation("SentMessages", fields: [senderId], references: [id])
+  receiverId String
+  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  read       Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@map("messages")
+}
+
+model Story {
+  id        String   @id @default(uuid())
+  imageUrl  String
+  type      String   @default("PHOTO")
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  userId    String
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("stories")
+}
