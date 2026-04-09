@@ -145,6 +145,7 @@ export async function getComments(req: Request, res: Response) {
   return res.json(comments)
 }
 
+// Função para deletar postagens (que estava dando 404)
 export async function deletePost(req: Request, res: Response) {
   const { id } = req.params
 
@@ -156,4 +157,39 @@ export async function deletePost(req: Request, res: Response) {
   await prisma.post.delete({ where: { id: String(id) } })
 
   return res.json({ success: true })
+}
+
+// Função para o Explorar (mostrar posts recentes de todos)
+export async function getExploreFeed(req: Request, res: Response) {
+  const { page = '1', limit = '12' } = req.query
+  const skip = (Number(page) - 1) * Number(limit)
+
+  const posts = await prisma.post.findMany({
+    skip,
+    take:    Number(limit),
+    orderBy: { createdAt: 'desc' },
+    include: {
+      author: {
+        select: {
+          id: true, name: true, username: true,
+          avatarUrl: true, userType: true, isVerified: true,
+        },
+      },
+      likes: {
+        where:  { userId: req.userId },
+        select: { id: true },
+      },
+      _count: {
+        select: { likes: true, comments: true },
+      },
+    },
+  })
+
+  const postsWithLiked = posts.map(post => ({
+    ...post,
+    liked: post.likes.length > 0,
+    likes: undefined,
+  }))
+
+  return res.json(postsWithLiked)
 }

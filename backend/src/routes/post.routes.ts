@@ -2,7 +2,7 @@
 import { Router } from 'express'
 import {
   createPost, getFeed,
-  toggleLike, addComment, getComments, deletePost
+  toggleLike, addComment, getComments, deletePost, getExploreFeed
 } from '../controllers/post.controller'
 import { authMiddleware } from '../middlewares/auth.middleware'
 
@@ -14,5 +14,6 @@ router.post('/:id/like',     authMiddleware, toggleLike)
 router.get('/:id/comments',  authMiddleware, getComments)
 router.post('/:id/comments', authMiddleware, addComment)
 router.delete('/:id',        authMiddleware, deletePost)
+router.get('/explore',       authMiddleware, getExploreFeed)
 
 export default router
