@@ -10,9 +10,14 @@ const matchSchema = z.object({
   championshipId: z.string().optional().nullable(),
   team1Id:        z.string().optional().nullable(),
   team2Id:        z.string().optional().nullable(),
+  player1Id:      z.string().optional().nullable(),
+  player2Id:      z.string().optional().nullable(),
+  side1UserIds:   z.array(z.string()).optional(), // Array for mix teams
+  side2UserIds:   z.array(z.string()).optional(),
   date:           z.string(),
   location:       z.string().optional(),
   phase:          z.string().optional(),
+  isOfficial:     z.boolean().optional().default(true),
 })
 
 export async function createMatch(req: Request, res: Response) {
@@ -22,22 +27,35 @@ export async function createMatch(req: Request, res: Response) {
     const championship = await prisma.championship.findUnique({
       where: { id: data.championshipId }
     })
-
     if (!championship) throw new AppError('Campeonato não encontrado', 404)
-    if (championship.organizerId !== req.userId && req.userId) {
-       // if it's a championship match, only the organizer can create it? 
-       // User said "you can create your own match", maybe if championshipId is missing it's standalone.
-    }
   }
 
   const match = await prisma.match.create({
     data: {
-      ...data,
-      date: new Date(data.date),
+      championshipId: data.championshipId || null,
+      team1Id:        data.team1Id || null,
+      team2Id:        data.team2Id || null,
+      player1Id:      data.player1Id || null,
+      player2Id:      data.player2Id || null,
+      date:           new Date(data.date),
+      location:       data.location || null,
+      phase:          data.phase || null,
+      isOfficial:     data.isOfficial ?? true,
+      participants: {
+        create: [
+          ...(data.side1UserIds?.map(userId => ({ userId, side: 1 })) || []),
+          ...(data.side2UserIds?.map(userId => ({ userId, side: 2 })) || []),
+        ]
+      }
     },
     include: {
       team1: true,
       team2: true,
+      player1: true,
+      player2: true,
+      participants: {
+        include: { user: true }
+      }
     }
   })
 
@@ -46,7 +64,8 @@ export async function createMatch(req: Request, res: Response) {
 
 export async function updateScore(req: Request, res: Response) {
   const { id }     = req.params
-  const { score1, score2, status, isWalkover, winnerId } = req.body
+  const { score1, score2, status, isWalkover, winnerId, isHighlighted } = req.body
+  const userId = (req as any).userId
 
   const match = await prisma.match.findUnique({
     where: { id: String(id) },
@@ -55,8 +74,7 @@ export async function updateScore(req: Request, res: Response) {
 
   if (!match) throw new AppError('Partida não encontrada', 404)
   
-  // If it's a championship match, check permissions
-  if (match.championship && match.championship.organizerId !== req.userId) {
+  if (match.championship && match.championship.organizerId !== userId) {
     throw new AppError('Sem permissão', 403)
   }
 
@@ -69,7 +87,8 @@ export async function updateScore(req: Request, res: Response) {
       score2: score2 !== undefined ? Number(score2) : match.score2,
       status: status || match.status,
       isWalkover: isWalkover !== undefined ? Boolean(isWalkover) : match.isWalkover,
-      winnerId: winnerId || match.winnerId
+      winnerId: winnerId || match.winnerId,
+      isHighlighted: isHighlighted !== undefined ? Boolean(isHighlighted) : match.isHighlighted
     }
   })
 
@@ -81,7 +100,6 @@ export async function updateScore(req: Request, res: Response) {
   return res.json(updated)
 }
 
-
 export async function listChampionshipMatches(req: Request, res: Response) {
   const { championshipId } = req.params
 
@@ -91,8 +109,30 @@ export async function listChampionshipMatches(req: Request, res: Response) {
     include: {
       team1: true,
       team2: true,
+      player1: true,
+      player2: true,
+      participants: {
+        include: { user: true }
+      }
     }
   })
 
+  return res.json(matches)
+}
+
+export async function listStandaloneMatches(req: Request, res: Response) {
+  const matches = await prisma.match.findMany({
+    where: { championshipId: null },
+    orderBy: { createdAt: 'desc' },
+    include: {
+      team1: true,
+      team2: true,
+      player1: true,
+      player2: true,
+      participants: {
+        include: { user: true }
+      }
+    }
+  })
   return res.json(matches)
 }

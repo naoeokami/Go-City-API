@@ -41,6 +41,13 @@ model User {
   stories           Story[]
   score             Int            @default(0)
   
+  match1            Match[]        @relation("Player1Matches")
+  match2            Match[]        @relation("Player2Matches")
+  
+  matchParticipations MatchParticipant[]
+  
+  activities        Activity[]
+  
   @@map("users")
 }
 
@@ -289,6 +296,11 @@ model Match {
   team2Id        String?
   team2          Team?       @relation("Team2Matches", fields: [team2Id], references: [id])
 
+  player1Id      String?
+  player1        User?       @relation("Player1Matches", fields: [player1Id], references: [id])
+  player2Id      String?
+  player2        User?       @relation("Player2Matches", fields: [player2Id], references: [id])
+
   score1         Int         @default(0)
   score2         Int         @default(0)
   
@@ -298,11 +310,28 @@ model Match {
   status         MatchStatus @default(SCHEDULED)
   winnerId       String?
   isWalkover     Boolean     @default(false)
+  
+  isOfficial     Boolean     @default(true)
+  isHighlighted  Boolean     @default(false)
 
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
+  activities     Activity[]
+  participants   MatchParticipant[]
+
   @@map("matches")
+}
+
+model MatchParticipant {
+  id      String @id @default(uuid())
+  matchId String
+  match   Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User    @relation(fields: [userId], references: [id])
+  side    Int     // 1 for Team 1 / Player 1 side, 2 for Team 2 / Player 2 side
+
+  @@map("match_participants")
 }
 
 enum MatchStatus {
@@ -339,3 +368,16 @@ model Story {
 
   @@map("stories")
 }
+
+model Activity {
+  id        String   @id @default(uuid())
+  type      String   
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  matchId   String?
+  match     Match?   @relation(fields: [matchId], references: [id])
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@map("activities")
+}

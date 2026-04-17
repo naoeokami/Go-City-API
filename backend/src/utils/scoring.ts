@@ -54,20 +54,46 @@ export async function processMatchScore(matchId: string) {
     include: {
       team1: true,
       team2: true,
+      player1: true,
+      player2: true,
+      participants: true,
     }
   })
 
-  if (!match || !match.team1Id || !match.team2Id) return
+  if (!match) return
 
-  if (match.isWalkover) {
-    // If it's a walkover, the winner gets victory points, the loser gets walkover points
-    if (match.winnerId === match.team1Id) {
-      await addPointsToTeamMembers(match.team1Id, POINTS.VICTORY)
-      await addPointsToTeamMembers(match.team2Id, POINTS.WALKOVER)
-    } else if (match.winnerId === match.team2Id) {
-      await addPointsToTeamMembers(match.team2Id, POINTS.VICTORY)
-      await addPointsToTeamMembers(match.team1Id, POINTS.WALKOVER)
+  // Unofficial match penalty (50%)
+  const multiplier = match.isOfficial ? 1 : 0.5
+
+  const awardPoints = async (side: 1 | 2, basePoints: number) => {
+    const finalPoints = Math.round(basePoints * multiplier)
+    const teamId = side === 1 ? match.team1Id : match.team2Id
+    const soloPlayerId = side === 1 ? match.player1Id : match.player2Id
+    const participants = match.participants.filter(p => p.side === side)
+
+    if (teamId) {
+      await addPointsToTeamMembers(teamId, finalPoints)
+    } else if (soloPlayerId) {
+      await addPointsToUser(soloPlayerId, finalPoints)
+    } else if (participants.length > 0) {
+      // Award points to all mix participants on this side
+      for (const p of participants) {
+        await addPointsToUser(p.userId, finalPoints)
+      }
     }
+  }
+
+  // Walkover logic
+  if (match.isWalkover) {
+    const winnerSide = match.winnerId === (match.team1Id || match.player1Id || match.participants.find(p => p.side === 1)?.userId) ? 1 : 2
+    if (winnerSide === 1) {
+      await awardPoints(1, POINTS.VICTORY)
+      await awardPoints(2, POINTS.WALKOVER)
+    } else {
+      await awardPoints(2, POINTS.VICTORY)
+      await awardPoints(1, POINTS.WALKOVER)
+    }
+    await highlightMatch(matchId)
     return
   }
 
@@ -98,8 +124,25 @@ export async function processMatchScore(matchId: string) {
     }
   }
 
-  await addPointsToTeamMembers(match.team1Id, points1)
-  await addPointsToTeamMembers(match.team2Id, points2)
+  await awardPoints(1, points1)
+  await awardPoints(2, points2)
+  
+  await highlightMatch(matchId)
+}
+
+async function highlightMatch(matchId: string) {
+  await prisma.match.update({
+    where: { id: matchId },
+    data: { isHighlighted: true }
+  })
+
+  // Create feed activity
+  await prisma.activity.create({
+    data: {
+      type: 'MATCH_FINISHED',
+      matchId: matchId,
+    }
+  })
 }
 
 export async function rewardTournamentPositions(data: {
@@ -125,4 +168,3 @@ export async function rewardGroupStage(data: {
     await addPointsToTeamMembers(id, POINTS.GROUP_LEADER)
   }
 }
-

@@ -35,21 +35,22 @@ export async function createPost(req: Request, res: Response) {
 
 export async function getFeed(req: Request, res: Response) {
   const { page = '1', limit = '10' } = req.query
+  const skip = (Number(page) - 1) * Number(limit)
+  const take = Number(limit)
+  const userId = (req as any).userId
 
   const following = await prisma.follow.findMany({
-    where:  { followerId: req.userId },
+    where:  { followerId: userId },
     select: { followingId: true },
   })
-
   const followingIds = following.map(f => f.followingId)
-  followingIds.push(req.userId)
+  if (userId) followingIds.push(userId)
 
-  const skip = (Number(page) - 1) * Number(limit)
-
+  // Fetch regular posts
   const posts = await prisma.post.findMany({
     where:   { authorId: { in: followingIds } },
     skip,
-    take:    Number(limit),
+    take,
     orderBy: { createdAt: 'desc' },
     include: {
       author: {
@@ -59,7 +60,7 @@ export async function getFeed(req: Request, res: Response) {
         },
       },
       likes: {
-        where:  { userId: req.userId },
+        where:  { userId: userId },
         select: { id: true },
       },
       _count: {
@@ -68,13 +69,45 @@ export async function getFeed(req: Request, res: Response) {
     },
   })
 
+  // Fetch match highlights
+  const activities = await prisma.activity.findMany({
+    where: { type: 'MATCH_FINISHED' },
+    take: 5, // Top 5 recent highlights
+    orderBy: { createdAt: 'desc' },
+    include: {
+      match: {
+        include: {
+          team1: true,
+          team2: true,
+          player1: true,
+          player2: true,
+          championship: {
+            select: { title: true }
+          }
+        }
+      }
+    }
+  })
+
   const postsWithLiked = posts.map(post => ({
     ...post,
+    feedType: 'POST',
     liked: post.likes.length > 0,
     likes: undefined,
   }))
 
-  return res.json(postsWithLiked)
+  const matchHighlights = activities.map(act => ({
+    ...act,
+    feedType: 'MATCH_HIGHLIGHT',
+    id: `highlight-${act.id}`
+  }))
+
+  // Merge and sort
+  const combined: any[] = [...matchHighlights, ...postsWithLiked].sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )
+
+  return res.json(combined)
 }
 
 export async function toggleLike(req: Request, res: Response) {

@@ -132,6 +132,16 @@ export async function getChampionship(req: Request, res: Response) {
         },
         orderBy: { date: 'asc' },
       },
+      registrations: {
+        include: {
+          team: {
+            select: { id: true, name: true, logoUrl: true }
+          },
+          user: {
+            select: { id: true, name: true, avatarUrl: true, username: true }
+          }
+        }
+      },
       _count: {
         select: { registrations: true },
       },
