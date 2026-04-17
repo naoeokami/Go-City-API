@@ -1,6 +1,6 @@
 // src/controllers/championship.controller.ts
 import { Request, Response } from 'express'
-import { PrismaClient }      from '@prisma/client'
+import { PrismaClient, ChampionshipFormat, RegistrationType } from '@prisma/client'
 import { z }                 from 'zod'
 import { AppError }          from '../middlewares/error.middleware'
 
@@ -8,10 +8,13 @@ const prisma = new PrismaClient()
 
 const championshipSchema = z.object({
   title:                z.string().min(3),
-  description:          z.string().min(10),
+  description:          z.string().optional(),
   sport:                z.string(),
-  format:               z.string(),
-  maxParticipants:      z.number().optional(),
+  format:               z.enum(['KNOCKOUT', 'ROUND_ROBIN', 'GROUPS_PLUS_KNOCKOUT']),
+  registrationType:     z.enum(['INDIVIDUAL', 'TEAM']),
+  maxParticipants:      z.number().optional().default(16),
+  groupsCount:          z.number().optional().default(0),
+  advancePerGroup:      z.number().optional().default(2),
   registrationFee:      z.number().default(0),
   startDate:            z.string(),
   endDate:              z.string(),
@@ -23,18 +26,35 @@ const championshipSchema = z.object({
   prizes:               z.string().optional(),
 })
 
+
 export async function createChampionship(req: Request, res: Response) {
-  const data = championshipSchema.parse(req.body)
+  const validatedData = championshipSchema.parse(req.body)
 
   const championship = await prisma.championship.create({
     data: {
-      ...data,
-      startDate:            new Date(data.startDate),
-      endDate:              new Date(data.endDate),
-      registrationDeadline: new Date(data.registrationDeadline),
+      title:                validatedData.title,
+      description:          validatedData.description,
+      sport:                validatedData.sport,
+      format:               validatedData.format as ChampionshipFormat,
+      registrationType:     validatedData.registrationType as RegistrationType,
+      maxParticipants:      validatedData.maxParticipants,
+      groupsCount:          validatedData.groupsCount,
+      advancePerGroup:      validatedData.advancePerGroup,
+      registrationFee:      validatedData.registrationFee,
+      location:             validatedData.location,
+      city:                 validatedData.city,
+      state:                validatedData.state,
+      rules:                validatedData.rules,
+      prizes:               validatedData.prizes,
+      startDate:            new Date(validatedData.startDate),
+      endDate:              new Date(validatedData.endDate),
+      registrationDeadline: new Date(validatedData.registrationDeadline),
       organizerId:          req.userId,
       status:               'DRAFT',
     },
+
+
+
     include: {
       organizer: {
         select: {
@@ -123,6 +143,53 @@ export async function getChampionship(req: Request, res: Response) {
   return res.json(championship)
 }
 
+export async function generateTournament(req: Request, res: Response) {
+  const { id } = req.params as { id: string }
+  
+  const championship = await prisma.championship.findUnique({
+    where: { id },
+    include: { registrations: true }
+  })
+
+  if (!championship) throw new AppError('Campeonato não encontrado', 404)
+  if (championship.organizerId !== req.userId) throw new AppError('Sem permissão', 403)
+
+  const registrations = championship.registrations.filter(r => r.status === 'APPROVED')
+  
+  if (registrations.length < 2) {
+    throw new AppError('É necessário pelo menos 2 inscrições aprovadas')
+  }
+
+  const { generateKnockoutMatches, generateGroupMatches } = await import('../utils/tournament')
+  
+  let matchesData = []
+
+  if (championship.format === 'KNOCKOUT') {
+    matchesData = await generateKnockoutMatches(id, registrations)
+  } else if (championship.format === 'GROUPS_PLUS_KNOCKOUT') {
+    if (!championship.groupsCount || championship.groupsCount <= 0) {
+      throw new AppError('Quantidade de grupos não configurada')
+    }
+    matchesData = await generateGroupMatches(id, registrations, championship.groupsCount)
+  } else if (championship.format === 'ROUND_ROBIN') {
+    matchesData = await generateGroupMatches(id, registrations, 1) // 1 single group
+  }
+
+  // Clear existing matches if it's a re-draw? (Optional, let's keep it safe)
+  // await prisma.match.deleteMany({ where: { championshipId: id } })
+
+  const createdMatches = await prisma.match.createMany({
+    data: matchesData
+  })
+
+  await prisma.championship.update({
+    where: { id },
+    data: { status: 'ONGOING' }
+  })
+
+  return res.json({ message: 'Torneio gerado com sucesso', count: createdMatches.count })
+}
+
 export async function updateChampionshipStatus(req: Request, res: Response) {
   const { id }     = req.params as { id: string }
   const { status } = req.body
@@ -143,6 +210,31 @@ export async function updateChampionshipStatus(req: Request, res: Response) {
   return res.json(updated)
 }
 
+export async function finishChampionship(req: Request, res: Response) {
+  const { id } = req.params as { id: string }
+  const { championId, runnerUpId, thirdPlaceId, fourthPlaceId } = req.body
+
+  const championship = await prisma.championship.findUnique({ where: { id } })
+
+  if (!championship) throw new AppError('Campeonato não encontrado', 404)
+  if (championship.organizerId !== req.userId) throw new AppError('Sem permissão', 403)
+
+  const updated = await prisma.championship.update({
+    where: { id },
+    data: { status: 'FINISHED' }
+  })
+
+  // Apply points
+  const { rewardTournamentPositions } = await import('../utils/scoring')
+  await rewardTournamentPositions({
+    championId,
+    runnerUpId,
+    thirdPlaceId,
+    fourthPlaceId
+  })
+
+  return res.json(updated)
+}
 export async function addResult(req: Request, res: Response) {
   const { id } = req.params as { id: string }
 

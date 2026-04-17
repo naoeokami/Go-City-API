@@ -3,6 +3,7 @@ import { Router } from 'express'
 import {
   createChampionship, listChampionships,
   getChampionship, updateChampionshipStatus, addResult,
+  finishChampionship, generateTournament,
 } from '../controllers/championship.controller'
 import { authMiddleware } from '../middlewares/auth.middleware'
 
@@ -12,6 +13,8 @@ router.get('/',             listChampionships)
 router.get('/:id',          getChampionship)
 router.post('/',            authMiddleware, createChampionship)
 router.patch('/:id/status', authMiddleware, updateChampionshipStatus)
+router.post('/:id/generate', authMiddleware, generateTournament)
 router.post('/:id/results', authMiddleware, addResult)
+router.post('/:id/finish',  authMiddleware, finishChampionship)
 
 export default router

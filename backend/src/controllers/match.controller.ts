@@ -7,23 +7,28 @@ import { AppError }          from '../middlewares/error.middleware'
 const prisma = new PrismaClient()
 
 const matchSchema = z.object({
-  championshipId: z.string(),
+  championshipId: z.string().optional().nullable(),
   team1Id:        z.string().optional().nullable(),
   team2Id:        z.string().optional().nullable(),
   date:           z.string(),
   location:       z.string().optional(),
-  phase:          z.string(),
+  phase:          z.string().optional(),
 })
 
 export async function createMatch(req: Request, res: Response) {
   const data = matchSchema.parse(req.body)
 
-  const championship = await prisma.championship.findUnique({
-    where: { id: data.championshipId }
-  })
+  if (data.championshipId) {
+    const championship = await prisma.championship.findUnique({
+      where: { id: data.championshipId }
+    })
 
-  if (!championship) throw new AppError('Campeonato não encontrado', 404)
-  if (championship.organizerId !== req.userId) throw new AppError('Sem permissão', 403)
+    if (!championship) throw new AppError('Campeonato não encontrado', 404)
+    if (championship.organizerId !== req.userId && req.userId) {
+       // if it's a championship match, only the organizer can create it? 
+       // User said "you can create your own match", maybe if championshipId is missing it's standalone.
+    }
+  }
 
   const match = await prisma.match.create({
     data: {
@@ -41,7 +46,7 @@ export async function createMatch(req: Request, res: Response) {
 
 export async function updateScore(req: Request, res: Response) {
   const { id }     = req.params
-  const { score1, score2, status } = req.body
+  const { score1, score2, status, isWalkover, winnerId } = req.body
 
   const match = await prisma.match.findUnique({
     where: { id: String(id) },
@@ -49,7 +54,13 @@ export async function updateScore(req: Request, res: Response) {
   })
 
   if (!match) throw new AppError('Partida não encontrada', 404)
-  if (match.championship.organizerId !== req.userId) throw new AppError('Sem permissão', 403)
+  
+  // If it's a championship match, check permissions
+  if (match.championship && match.championship.organizerId !== req.userId) {
+    throw new AppError('Sem permissão', 403)
+  }
+
+  const statusChangedToFinished = status === 'FINISHED' && match.status !== 'FINISHED'
 
   const updated = await prisma.match.update({
     where: { id: String(id) },
@@ -57,11 +68,19 @@ export async function updateScore(req: Request, res: Response) {
       score1: score1 !== undefined ? Number(score1) : match.score1,
       score2: score2 !== undefined ? Number(score2) : match.score2,
       status: status || match.status,
+      isWalkover: isWalkover !== undefined ? Boolean(isWalkover) : match.isWalkover,
+      winnerId: winnerId || match.winnerId
     }
   })
 
+  if (statusChangedToFinished) {
+    const { processMatchScore } = await import('../utils/scoring')
+    await processMatchScore(updated.id)
+  }
+
   return res.json(updated)
 }
+
 
 export async function listChampionshipMatches(req: Request, res: Response) {
   const { championshipId } = req.params

@@ -1,6 +1,6 @@
 // src/routes/chat.routes.ts
 import { Router } from 'express'
-import { sendMessage, getConversation, listConversations, markAsRead } from '../controllers/chat.controller'
+import { sendMessage, getConversation, listConversations, markAsRead, getTeamMessages } from '../controllers/chat.controller'
 import { authMiddleware } from '../middlewares/auth.middleware'
 
 const router = Router()
@@ -8,6 +8,7 @@ const router = Router()
 router.use(authMiddleware)
 
 router.get('/conversations', listConversations)
+router.get('/team/:teamId',   getTeamMessages)
 router.get('/:otherId',      getConversation)
 router.put('/:otherId/read', markAsRead)
 router.post('/',             sendMessage)

@@ -15,6 +15,7 @@ export async function getProfile(req: Request, res: Response) {
       bio: true, avatarUrl: true, coverUrl: true,
       userType: true, sport: true, city: true,
       state: true, isVerified: true, createdAt: true,
+      score: true,
       _count: {
         select: {
           posts:     true,
@@ -113,6 +114,28 @@ export async function searchUsers(req: Request, res: Response) {
       avatarUrl: true, userType: true, isVerified: true,
     },
     take: 10,
+  })
+
+  return res.json(users)
+}
+
+export async function getRanking(req: Request, res: Response) {
+  const { limit = '50' } = req.query
+
+  const users = await prisma.user.findMany({
+    orderBy: { score: 'desc' },
+    take: Number(limit),
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      avatarUrl: true,
+      userType: true,
+      isVerified: true,
+      score: true,
+      city: true,
+      state: true
+    }
   })
 
   return res.json(users)

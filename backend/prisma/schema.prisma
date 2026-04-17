@@ -39,6 +39,7 @@ model User {
   sentMessages      Message[]      @relation("SentMessages")
   receivedMessages  Message[]      @relation("ReceivedMessages")
   stories           Story[]
+  score             Int            @default(0)
   
   @@map("users")
 }
@@ -110,13 +111,16 @@ model Like {
 model Championship {
   id                   String             @id @default(uuid())
   title                String
-  description          String
+  description          String?
   sport                String
   imageUrl             String?
   organizerId          String
   status               ChampionshipStatus @default(DRAFT)
-  format               String
+  format               ChampionshipFormat @default(KNOCKOUT)
+  registrationType     RegistrationType   @default(INDIVIDUAL)
   maxParticipants      Int?
+  advancePerGroup      Int?               @default(2)
+  groupsCount          Int?               @default(0)
   registrationFee      Float              @default(0)
   startDate            DateTime
   endDate              DateTime
@@ -144,6 +148,17 @@ enum ChampionshipStatus {
   ONGOING
   FINISHED
   CANCELLED
+}
+
+enum ChampionshipFormat {
+  KNOCKOUT
+  ROUND_ROBIN
+  GROUPS_PLUS_KNOCKOUT
+}
+
+enum RegistrationType {
+  INDIVIDUAL
+  TEAM
 }
 
 model Registration {
@@ -228,8 +243,9 @@ model Team {
   sport       String
   members     TeamMember[]
   registrations Registration[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  messages      Message[]      @relation("TeamMessages")
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   match1 Match[] @relation("Team1Matches")
   match2 Match[] @relation("Team2Matches")
@@ -265,8 +281,8 @@ enum TeamMemberRole {
 
 model Match {
   id             String      @id @default(uuid())
-  championshipId String
-  championship   Championship @relation(fields: [championshipId], references: [id], onDelete: Cascade)
+  championshipId String?
+  championship   Championship? @relation(fields: [championshipId], references: [id], onDelete: Cascade)
   
   team1Id        String?
   team1          Team?       @relation("Team1Matches", fields: [team1Id], references: [id])
@@ -278,9 +294,10 @@ model Match {
   
   date           DateTime
   location       String?
-  phase          String      
+  phase          String?      
   status         MatchStatus @default(SCHEDULED)
   winnerId       String?
+  isWalkover     Boolean     @default(false)
 
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
@@ -300,8 +317,10 @@ model Message {
   content    String
   senderId   String
   sender     User     @relation("SentMessages", fields: [senderId], references: [id])
-  receiverId String
-  receiver   User     @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  receiverId String?
+  receiver   User?    @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  teamId     String?
+  team       Team?    @relation("TeamMessages", fields: [teamId], references: [id])
   read       Boolean  @default(false)
   createdAt  DateTime @default(now())
 

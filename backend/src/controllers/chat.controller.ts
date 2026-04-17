@@ -7,7 +7,7 @@ import { createNotification } from './notification.controller'
 const prisma = new PrismaClient()
 
 export async function sendMessage(req: Request, res: Response) {
-  const { receiverId, content } = req.body
+  const { receiverId, teamId, content } = req.body
 
   if (!content?.trim()) throw new AppError('Mensagem vazia')
 
@@ -15,7 +15,8 @@ export async function sendMessage(req: Request, res: Response) {
     data: {
       content,
       senderId:   req.userId,
-      receiverId,
+      receiverId: receiverId || null,
+      teamId:     teamId || null,
     },
     include: {
       sender: {
@@ -24,15 +25,44 @@ export async function sendMessage(req: Request, res: Response) {
     }
   })
 
-  await createNotification(
-    receiverId,
-    req.userId,
-    'PRIVATE_MESSAGE',
-    `${message.sender.name} te enviou uma mensagem`,
-    `/messages`
-  )
+  if (receiverId) {
+    await createNotification(
+      receiverId,
+      req.userId,
+      'PRIVATE_MESSAGE',
+      `${message.sender.name} te enviou uma mensagem`,
+      `/messages`
+    )
+  }
 
   return res.status(201).json(message)
+}
+
+export async function getTeamMessages(req: Request, res: Response) {
+  const { teamId } = req.params
+
+  // Verificar se o usuário faz parte do time
+  const member = await prisma.teamMember.findFirst({
+    where: {
+      teamId: String(teamId),
+      userId: req.userId,
+      status: 'ACCEPTED'
+    }
+  })
+
+  if (!member) throw new AppError('Sem permissão para ver mensagens deste time', 403)
+
+  const messages = await prisma.message.findMany({
+    where: { teamId: String(teamId) },
+    orderBy: { createdAt: 'asc' },
+    include: {
+      sender: {
+        select: { id: true, name: true, username: true, avatarUrl: true }
+      }
+    }
+  })
+
+  return res.json(messages)
 }
 
 export async function getConversation(req: Request, res: Response) {

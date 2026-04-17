@@ -20,19 +20,34 @@ export async function createRegistration(req: Request, res: Response) {
     throw new AppError('Inscrições encerradas para este campeonato')
   }
 
+  // Verificar se o tipo de inscrição bate com o campeonato
+  if (teamId && championship.registrationType !== 'TEAM') {
+    throw new AppError('Este campeonato aceita apenas inscrições individuais')
+  }
+  if (!teamId && championship.registrationType === 'TEAM') {
+    throw new AppError('Este campeonato aceita apenas inscrições de equipes')
+  }
+
   // Se estiver se inscrevendo como indivíduo (sem time)
   if (!teamId) {
-    const existing = await prisma.registration.findUnique({
+    const existing = await prisma.registration.findFirst({
       where: {
-        userId_championshipId: {
-          userId:        req.userId,
-          championshipId: String(championshipId),
-        },
+        userId:        req.userId,
+        championshipId: String(championshipId),
       },
     })
     if (existing) throw new AppError('Você já está inscrito neste campeonato')
   } else {
     // Se estiver inscrevendo um TIME
+    const team = await prisma.team.findUnique({
+      where: { id: String(teamId) }
+    })
+
+    if (!team) throw new AppError('Time não encontrado', 404)
+    if (team.captainId !== req.userId) {
+      throw new AppError('Somente o capitão da equipe pode realizar a inscrição')
+    }
+
     const existingTeam = await prisma.registration.findFirst({
       where: {
         teamId: String(teamId),
@@ -41,6 +56,7 @@ export async function createRegistration(req: Request, res: Response) {
     })
     if (existingTeam) throw new AppError('Este time já está inscrito neste campeonato')
   }
+
 
   if (championship.maxParticipants) {
     const count = await prisma.registration.count({
