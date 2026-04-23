@@ -1,11 +1,11 @@
 // src/controllers/team.controller.ts
 import { Request, Response } from 'express'
-import { PrismaClient }      from '@prisma/client'
+
 import { z }                 from 'zod'
 import { AppError }          from '../middlewares/error.middleware'
 import { createNotification } from './notification.controller'
 
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 
 const teamSchema = z.object({
   name:        z.string().min(2),

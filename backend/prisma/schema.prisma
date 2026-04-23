@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
 }
 
 datasource db {
@@ -40,6 +41,9 @@ model User {
   receivedMessages  Message[]      @relation("ReceivedMessages")
   stories           Story[]
   score             Int            @default(0)
+  matchesPlayed     Int            @default(0)
+  matchesWon        Int            @default(0)
+  badges            String[]       @default([])
   
   match1            Match[]        @relation("Player1Matches")
   match2            Match[]        @relation("Player2Matches")
@@ -144,8 +148,28 @@ model Championship {
   registrations Registration[]
   results       Result[]
   matches       Match[]
+  groups        Group[]
 
   @@map("championships")
+}
+
+model Group {
+  id             String       @id @default(uuid())
+  name           String       // e.g., "Grupo A"
+  championshipId String
+  championship   Championship @relation(fields: [championshipId], references: [id], onDelete: Cascade)
+  
+  matches        Match[]
+  
+  // Teams in this group (calculated or explicitly linked?)
+  // For simplicity, let's link teams or players here if needed, or just rely on matches.
+  // Actually, we need to know who is in the group.
+  participants   Registration[]
+
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@map("groups")
 }
 
 enum ChampionshipStatus {
@@ -181,6 +205,9 @@ model Registration {
   championship Championship @relation(fields: [championshipId], references: [id])
   teamId       String?
   team         Team?        @relation(fields: [teamId],         references: [id])
+  
+  groupId      String?
+  group        Group?       @relation(fields: [groupId],        references: [id])
 
   @@unique([userId, championshipId])
   @@map("registrations")
@@ -291,6 +318,9 @@ model Match {
   championshipId String?
   championship   Championship? @relation(fields: [championshipId], references: [id], onDelete: Cascade)
   
+  groupId        String?
+  group          Group?        @relation(fields: [groupId],        references: [id])
+
   team1Id        String?
   team1          Team?       @relation("Team1Matches", fields: [team1Id], references: [id])
   team2Id        String?
@@ -307,6 +337,10 @@ model Match {
   date           DateTime
   location       String?
   phase          String?      
+  round          Int?         @default(1)
+  bracketOrder   Int?         // Position in the bracket for visual layout
+  nextMatchId    String?      // For knockout brackets
+  
   status         MatchStatus @default(SCHEDULED)
   winnerId       String?
   isWalkover     Boolean     @default(false)

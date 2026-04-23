@@ -5,6 +5,9 @@ import {
   getChampionship, updateChampionshipStatus, addResult,
   finishChampionship, generateTournament,
 } from '../controllers/championship.controller'
+import {
+  generateGroups, generateBrackets, getStandings
+} from '../controllers/tournament-manager.controller'
 import { authMiddleware } from '../middlewares/auth.middleware'
 
 const router = Router()
@@ -14,6 +17,9 @@ router.get('/:id',          getChampionship)
 router.post('/',            authMiddleware, createChampionship)
 router.patch('/:id/status', authMiddleware, updateChampionshipStatus)
 router.post('/:id/generate', authMiddleware, generateTournament)
+router.post('/:id/generate-groups', authMiddleware, generateGroups)
+router.post('/:id/generate-brackets', authMiddleware, generateBrackets)
+router.get('/:id/standings', getStandings)
 router.post('/:id/results', authMiddleware, addResult)
 router.post('/:id/finish',  authMiddleware, finishChampionship)
 

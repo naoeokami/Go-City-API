@@ -4,7 +4,7 @@ import { PrismaClient, ChampionshipFormat, RegistrationType } from '@prisma/clie
 import { z }                 from 'zod'
 import { AppError }          from '../middlewares/error.middleware'
 
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 
 const championshipSchema = z.object({
   title:                z.string().min(3),

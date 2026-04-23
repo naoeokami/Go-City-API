@@ -1,9 +1,9 @@
 // src/controllers/post.controller.ts
 import { Request, Response } from 'express'
-import { PrismaClient }      from '@prisma/client'
+
 import { AppError }          from '../middlewares/error.middleware'
 
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 
 export async function createPost(req: Request, res: Response) {
   const { content, imageUrl, sport } = req.body

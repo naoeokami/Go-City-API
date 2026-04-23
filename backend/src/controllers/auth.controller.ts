@@ -1,12 +1,10 @@
 // src/controllers/auth.controller.ts
 import { Request, Response } from 'express'
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '../lib/prisma'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { z } from 'zod'
 import { AppError } from '../middlewares/error.middleware'
-
-const prisma = new PrismaClient()
 
 const registerSchema = z.object({
     name: z.string().min(2, 'Nome muito curto'),

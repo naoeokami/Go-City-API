@@ -1,10 +1,10 @@
 // src/controllers/match.controller.ts
 import { Request, Response } from 'express'
-import { PrismaClient }      from '@prisma/client'
+
 import { z }                 from 'zod'
 import { AppError }          from '../middlewares/error.middleware'
 
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 
 const matchSchema = z.object({
   championshipId: z.string().optional().nullable(),
@@ -95,6 +95,33 @@ export async function updateScore(req: Request, res: Response) {
   if (statusChangedToFinished) {
     const { processMatchScore } = await import('../utils/scoring')
     await processMatchScore(updated.id)
+
+    // Progression logic for brackets
+    if (updated.nextMatchId) {
+      const nextMatch = await prisma.match.findUnique({ 
+        where: { id: updated.nextMatchId },
+        include: { championship: true }
+      })
+      
+      if (nextMatch) {
+        const winnerId = updated.score1 > updated.score2 ? (updated.team1Id || updated.player1Id) : (updated.team2Id || updated.player2Id)
+        const side = updated.bracketOrder! % 2 === 0 ? '1' : '2'
+        
+        await prisma.match.update({
+          where: { id: nextMatch.id },
+          data: {
+            [`team${side}Id`]: updated.team1Id ? winnerId : null,
+            [`player${side}Id`]: updated.player1Id ? winnerId : null,
+          }
+        })
+      }
+    }
+  }
+
+  // Import io and emit the socket event if it belongs to a championship
+  if (updated.championshipId) {
+    const { io } = await import('../server')
+    io.to(`championship_${updated.championshipId}`).emit('match-updated', updated)
   }
 
   return res.json(updated)

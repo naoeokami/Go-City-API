@@ -51,9 +51,39 @@ app.use('/api/teams',         teamRoutes)
 app.use('/api/matches',       matchRoutes)
 app.use('/api/chat',          chatRoutes)
 
+import http from 'http'
+import { Server } from 'socket.io'
+
+const server = http.createServer(app)
+export const io = new Server(server, {
+  cors: {
+    origin: [
+      process.env.FRONTEND_URL || 'http://localhost:5173',
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'https://go-city.vercel.app'
+    ],
+    methods: ["GET", "POST"],
+    credentials: true,
+  }
+})
+
+io.on('connection', (socket) => {
+  console.log('User connected to socket:', socket.id)
+
+  socket.on('join-championship', (championshipId) => {
+    socket.join(`championship_${championshipId}`)
+    console.log(`Socket ${socket.id} joined championship_${championshipId}`)
+  })
+
+  socket.on('disconnect', () => {
+    console.log('User disconnected from socket:', socket.id)
+  })
+})
+
 app.use(errorMiddleware)
 
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Servidor rodando em http://localhost:${PORT}`)
 })
 

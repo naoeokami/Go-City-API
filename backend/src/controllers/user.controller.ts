@@ -1,9 +1,9 @@
 // src/controllers/user.controller.ts
 import { Request, Response } from 'express'
-import { PrismaClient }      from '@prisma/client'
+
 import { AppError }          from '../middlewares/error.middleware'
 
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 
 export async function getProfile(req: Request, res: Response) {
   const { username } = req.params as { username: string }
@@ -28,7 +28,22 @@ export async function getProfile(req: Request, res: Response) {
 
   if (!user) throw new AppError('Usuário não encontrado', 404)
 
-  return res.json(user)
+  // Fetch actual matches played or fallback to gamification stats
+  const matchesPlayed = await prisma.matchParticipant.count({ where: { userId: user.id } })
+
+  // Build gamification payload
+  const gamification = {
+    matchesPlayed: matchesPlayed > 0 ? matchesPlayed : 45, // Fallback for mockup if 0
+    winRate: matchesPlayed > 0 ? 55 : 68, // Mocked win rate
+    badges: [
+      { id: '1', title: 'Top 1 Ranking', icon: 'Trophy', color: 'yellow' },
+      { id: '2', title: '10 Dias Seguidos', icon: 'Calendar', color: 'blue' },
+      { id: '3', title: 'Influenciador', icon: 'UserPlus', color: 'green' }
+    ],
+    recentPerformance: ['win', 'loss', 'win', 'win', 'draw'] // Mock performance
+  }
+
+  return res.json({ ...user, gamification })
 }
 
 export async function getUserPosts(req: Request, res: Response) {

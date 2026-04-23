@@ -2,7 +2,7 @@
 import { Request, Response } from 'express'
 import { PrismaClient, NotificationType }      from '@prisma/client'
 
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 
 export async function getNotifications(req: Request, res: Response) {
   const notifications = await prisma.notification.findMany({

@@ -1,10 +1,10 @@
 // src/controllers/chat.controller.ts
 import { Request, Response } from 'express'
-import { PrismaClient }      from '@prisma/client'
+
 import { AppError }          from '../middlewares/error.middleware'
 import { createNotification } from './notification.controller'
 
-const prisma = new PrismaClient()
+import { prisma } from '../lib/prisma'
 
 export async function sendMessage(req: Request, res: Response) {
   const { receiverId, teamId, content } = req.body
