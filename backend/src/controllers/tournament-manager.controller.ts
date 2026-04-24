@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma'
 import { AppError } from '../middlewares/error.middleware'
 
 export async function generateGroups(req: Request, res: Response) {
-    const { championshipId } = req.params
+    const championshipId = req.params.championshipId as string
     const { groupsCount } = req.body
 
     const championship = await prisma.championship.findUnique({
@@ -71,7 +71,7 @@ export async function generateGroups(req: Request, res: Response) {
 }
 
 export async function generateBrackets(req: Request, res: Response) {
-    const { championshipId } = req.params
+    const championshipId = req.params.championshipId as string
     
     const championship = await prisma.championship.findUnique({
         where: { id: championshipId },
@@ -163,7 +163,7 @@ export async function generateBrackets(req: Request, res: Response) {
 }
 
 export async function getStandings(req: Request, res: Response) {
-    const { championshipId } = req.params
+    const championshipId = req.params.championshipId as string
 
     const groups = await prisma.group.findMany({
         where: { championshipId },

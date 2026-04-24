@@ -123,3 +123,61 @@ export async function getChampionshipRegistrations(req: Request, res: Response) 
 
   return res.json(registrations)
 }
+
+export async function updateRegistrationStatus(req: Request, res: Response) {
+  const id = req.params.id as string
+  const { status } = req.body
+
+  if (!['APPROVED', 'REJECTED'].includes(status)) {
+    throw new AppError('Status inválido')
+  }
+
+  const registration = await prisma.registration.findUnique({
+    where:   { id },
+    include: { championship: true },
+  })
+
+  if (!registration) throw new AppError('Inscrição não encontrada', 404)
+
+  if (registration.championship.organizerId !== req.userId) {
+    throw new AppError('Sem permissão', 403)
+  }
+
+  const updated = await prisma.registration.update({
+    where: { id },
+    data:  { status },
+  })
+
+  // Criar notificação para o usuário
+  await prisma.notification.create({
+    data: {
+      userId:  registration.userId,
+      type:    status === 'APPROVED' ? 'REGISTRATION_APPROVED' : 'REGISTRATION_REJECTED',
+      message: `Sua inscrição para o campeonato "${registration.championship.title}" foi ${status === 'APPROVED' ? 'aprovada' : 'recusada'}.`,
+      link:    `/championships/${registration.championshipId}`,
+    },
+  })
+
+  return res.json(updated)
+}
+
+export async function deleteRegistration(req: Request, res: Response) {
+  const id = req.params.id as string
+
+  const registration = await prisma.registration.findUnique({
+    where:   { id },
+    include: { championship: true },
+  })
+
+  if (!registration) throw new AppError('Inscrição não encontrada', 404)
+
+  if (registration.championship.organizerId !== req.userId && registration.userId !== req.userId) {
+    throw new AppError('Sem permissão', 403)
+  }
+
+  await prisma.registration.delete({
+    where: { id },
+  })
+
+  return res.status(204).send()
+}
