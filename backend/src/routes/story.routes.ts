@@ -5,7 +5,7 @@ import { authMiddleware } from '../middlewares/auth.middleware'
 
 const router = Router()
 
-router.get('/',      getStories) // Aberto para ver stories
+router.get('/',      authMiddleware, getStories)
 router.post('/',     authMiddleware, createStory)
 router.delete('/:id', authMiddleware, deleteStory)
 

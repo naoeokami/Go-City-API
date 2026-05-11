@@ -8,7 +8,7 @@ const router = Router()
 router.use(authMiddleware)
 
 router.get('/',      getNotifications)
-router.put('/:id/read', markAsRead)
-router.put('/read-all', markAllAsRead)
+router.patch('/:id/read', markAsRead)
+router.patch('/read-all', markAllAsRead)
 
 export default router
