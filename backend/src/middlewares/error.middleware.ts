@@ -23,6 +23,13 @@ export function errorMiddleware(
     })
   }
 
+  if (err.name === 'ZodError') {
+    return res.status(400).json({
+      error: 'Erro de validação',
+      details: JSON.parse(err.message)
+    })
+  }
+
   console.error('Erro não tratado:', err)
 
   return res.status(500).json({

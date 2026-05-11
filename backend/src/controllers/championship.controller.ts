@@ -7,7 +7,7 @@ import { AppError }          from '../middlewares/error.middleware'
 import { prisma } from '../lib/prisma'
 
 const championshipSchema = z.object({
-  title:                z.string().min(3),
+  title:                z.string().min(1, "Título é obrigatório"),
   description:          z.string().optional(),
   sport:                z.string(),
   format:               z.enum(['KNOCKOUT', 'ROUND_ROBIN', 'GROUPS_PLUS_KNOCKOUT']),
@@ -270,4 +270,30 @@ export async function addResult(req: Request, res: Response) {
   })
 
   return res.status(201).json(result)
+}
+
+export async function requestRegistration(req: Request, res: Response) {
+  const { id } = req.params as { id: string }
+  const { teamId } = req.body
+
+  const team = await prisma.team.findUnique({ where: { id: teamId } })
+  if (!team) throw new AppError('Time não encontrado', 404)
+
+  const championship = await prisma.championship.findUnique({ where: { id } })
+  if (!championship) throw new AppError('Campeonato não encontrado', 404)
+
+  // Send notification to captain
+  const { createNotification } = await import('./notification.controller')
+  
+  const user = await prisma.user.findUnique({ where: { id: req.userId } })
+
+  await createNotification(
+    team.captainId,
+    req.userId,
+    'TEAM_INVITE', // Or another type
+    `O membro ${user?.name} está solicitando que você inscreva o time ${team.name} no campeonato ${championship.title}.`,
+    `/championships/${id}`
+  )
+
+  return res.json({ success: true, message: 'Solicitação enviada ao capitão!' })
 }

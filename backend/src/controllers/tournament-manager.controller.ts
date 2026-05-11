@@ -4,7 +4,7 @@ import { AppError } from '../middlewares/error.middleware'
 
 export async function generateGroups(req: Request, res: Response) {
     const championshipId = req.params.championshipId as string
-    const { groupsCount } = req.body
+    const { groupsCount, participantsPerGroup, advancePerGroup } = req.body
 
     const championship = await prisma.championship.findUnique({
         where: { id: championshipId },
@@ -14,12 +14,20 @@ export async function generateGroups(req: Request, res: Response) {
     if (!championship) throw new AppError('Campeonato não encontrado', 404)
     if (championship.registrations.length === 0) throw new AppError('Nenhuma inscrição aprovada', 400)
 
+    const registrations = [...championship.registrations].sort(() => Math.random() - 0.5)
+    const count = participantsPerGroup ? Math.ceil(registrations.length / participantsPerGroup) : (groupsCount || championship.groupsCount || 4)
+
+    await prisma.championship.update({
+        where: { id: championshipId },
+        data: {
+            groupsCount: count,
+            advancePerGroup: advancePerGroup || championship.advancePerGroup || 2
+        }
+    })
+
     // Delete existing groups and matches for this championship
     await prisma.group.deleteMany({ where: { championshipId } })
     await prisma.match.deleteMany({ where: { championshipId, phase: 'GROUP' } })
-
-    const registrations = [...championship.registrations].sort(() => Math.random() - 0.5)
-    const count = groupsCount || championship.groupsCount || 4
     
     const groups = []
     for (let i = 0; i < count; i++) {
@@ -80,10 +88,27 @@ export async function generateBrackets(req: Request, res: Response) {
 
     if (!championship) throw new AppError('Campeonato não encontrado', 404)
 
-    // Simplified: Generate brackets from all approved registrations (Knockout only)
+    // Simplified: Generate brackets
     await prisma.match.deleteMany({ where: { championshipId, phase: { not: 'GROUP' } } })
 
-    const participants = [...championship.registrations].sort(() => Math.random() - 0.5)
+    let participants = []
+
+    if (championship.format === 'GROUPS_PLUS_KNOCKOUT' || championship.format === 'ROUND_ROBIN') {
+        const standingsRes = await calculateStandings(championshipId)
+        const advanceCount = championship.advancePerGroup || 2
+        for (const group of standingsRes) {
+            const qualified = group.table.slice(0, advanceCount)
+            for (const team of qualified) {
+                const reg = championship.registrations.find(r => r.teamId === team.id || r.userId === team.id)
+                if (reg) participants.push(reg)
+            }
+        }
+    } else {
+        participants = [...championship.registrations].sort(() => Math.random() - 0.5)
+    }
+
+    if (participants.length === 0) throw new AppError('Não há participantes suficientes para gerar chaves', 400)
+
     const powerOfTwo = Math.pow(2, Math.ceil(Math.log2(participants.length)))
     
     // Create all rounds at once
@@ -164,7 +189,11 @@ export async function generateBrackets(req: Request, res: Response) {
 
 export async function getStandings(req: Request, res: Response) {
     const championshipId = req.params.championshipId as string
+    const standings = await calculateStandings(championshipId)
+    return res.json(standings)
+}
 
+export async function calculateStandings(championshipId: string) {
     const groups = await prisma.group.findMany({
         where: { championshipId },
         include: {
@@ -233,5 +262,5 @@ export async function getStandings(req: Request, res: Response) {
         }
     })
 
-    return res.json(standings)
+    return standings
 }

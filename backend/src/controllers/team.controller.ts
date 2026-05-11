@@ -76,8 +76,14 @@ export async function getTeam(req: Request, res: Response) {
 }
 
 export async function listTeams(req: Request, res: Response) {
-  const { sport } = req.query
-  const where = sport ? { sport: String(sport) } : {}
+  const { sport, myTeams } = req.query
+  const where: any = sport ? { sport: String(sport) } : {}
+
+  if (myTeams === 'true' && req.userId) {
+     where.members = {
+        some: { userId: req.userId }
+     }
+  }
 
   const teams = await prisma.team.findMany({
     where,

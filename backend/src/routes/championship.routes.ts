@@ -3,7 +3,7 @@ import { Router } from 'express'
 import {
   createChampionship, listChampionships,
   getChampionship, updateChampionshipStatus, addResult,
-  finishChampionship, generateTournament,
+  finishChampionship, generateTournament, requestRegistration
 } from '../controllers/championship.controller'
 import {
   generateGroups, generateBrackets, getStandings
@@ -22,5 +22,6 @@ router.post('/:id/generate-brackets', authMiddleware, generateBrackets)
 router.get('/:id/standings', getStandings)
 router.post('/:id/results', authMiddleware, addResult)
 router.post('/:id/finish',  authMiddleware, finishChampionship)
+router.post('/:id/request-registration', authMiddleware, requestRegistration)
 
 export default router
