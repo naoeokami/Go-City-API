@@ -78,53 +78,74 @@ export async function updateScore(req: Request, res: Response) {
     throw new AppError('Sem permissão', 403)
   }
 
-  const statusChangedToFinished = status === 'FINISHED' && match.status !== 'FINISHED'
+  try {
+    const statusChangedToFinished = status === 'FINISHED' && match.status !== 'FINISHED'
 
-  const updated = await prisma.match.update({
-    where: { id: String(id) },
-    data: {
-      score1: score1 !== undefined ? Number(score1) : match.score1,
-      score2: score2 !== undefined ? Number(score2) : match.score2,
-      status: status || match.status,
-      isWalkover: isWalkover !== undefined ? Boolean(isWalkover) : match.isWalkover,
-      winnerId: winnerId || match.winnerId,
-      isHighlighted: isHighlighted !== undefined ? Boolean(isHighlighted) : match.isHighlighted
-    }
-  })
+    const updated = await prisma.match.update({
+      where: { id: String(id) },
+      data: {
+        score1: score1 !== undefined ? Number(score1) : match.score1,
+        score2: score2 !== undefined ? Number(score2) : match.score2,
+        status: status || match.status,
+        isWalkover: isWalkover !== undefined ? Boolean(isWalkover) : match.isWalkover,
+        winnerId: winnerId || match.winnerId,
+        isHighlighted: isHighlighted !== undefined ? Boolean(isHighlighted) : match.isHighlighted
+      },
+      include: {
+        team1: true,
+        team2: true,
+        player1: {
+          select: { id: true, name: true, avatarUrl: true, username: true }
+        },
+        player2: {
+          select: { id: true, name: true, avatarUrl: true, username: true }
+        }
+      }
+    })
 
-  if (statusChangedToFinished) {
-    const { processMatchScore } = await import('../utils/scoring')
-    await processMatchScore(updated.id)
+    if (statusChangedToFinished) {
+      const { processMatchScore } = await import('../utils/scoring')
+      await processMatchScore(updated.id)
 
-    // Progression logic for brackets
-    if (updated.nextMatchId) {
-      const nextMatch = await prisma.match.findUnique({ 
-        where: { id: updated.nextMatchId },
-        include: { championship: true }
-      })
-      
-      if (nextMatch) {
-        const winnerId = updated.score1 > updated.score2 ? (updated.team1Id || updated.player1Id) : (updated.team2Id || updated.player2Id)
-        const side = updated.bracketOrder! % 2 === 0 ? '1' : '2'
-        
-        await prisma.match.update({
-          where: { id: nextMatch.id },
-          data: {
-            [`team${side}Id`]: updated.team1Id ? winnerId : null,
-            [`player${side}Id`]: updated.player1Id ? winnerId : null,
-          }
+      // Only handle bracket progression if it's a knockout match with a next stage
+      if (updated.nextMatchId && updated.bracketOrder !== null) {
+        const nextMatch = await prisma.match.findUnique({
+          where: { id: updated.nextMatchId }
         })
+
+        if (nextMatch) {
+          const winnerId = (updated.score1 ?? 0) > (updated.score2 ?? 0) ? (updated.team1Id || updated.player1Id) : (updated.team2Id || updated.player2Id)
+          
+          if (winnerId) {
+            const side = updated.bracketOrder % 2 === 0 ? '1' : '2'
+            await prisma.match.update({
+              where: { id: nextMatch.id },
+              data: {
+                [`team${side}Id`]: updated.team1Id ? winnerId : null,
+                [`player${side}Id`]: updated.player1Id ? winnerId : null,
+              }
+            })
+          }
+        }
       }
     }
-  }
 
-  // Import io and emit the socket event if it belongs to a championship
-  if (updated.championshipId) {
-    const { io } = await import('../server')
-    io.to(`championship_${updated.championshipId}`).emit('match-updated', updated)
-  }
+    // Emit socket event if it belongs to a championship
+    if (updated.championshipId) {
+      try {
+        const { getIo } = await import('../socket')
+        const io = getIo()
+        io.to(`championship_${updated.championshipId}`).emit('match-updated', updated)
+      } catch (err) {
+        console.error('Socket emission failed:', err)
+      }
+    }
 
-  return res.json(updated)
+    return res.json(updated)
+  } catch (error) {
+    console.error('Error updating match score:', error)
+    return res.status(500).json({ error: 'Erro ao atualizar placar. Verifique se os dados estão corretos.' })
+  }
 }
 
 export async function listChampionshipMatches(req: Request, res: Response) {

@@ -129,6 +129,12 @@ export async function getChampionship(req: Request, res: Response) {
         include: {
           team1: true,
           team2: true,
+          player1: {
+            select: { id: true, name: true, avatarUrl: true, username: true }
+          },
+          player2: {
+            select: { id: true, name: true, avatarUrl: true, username: true }
+          }
         },
         orderBy: { date: 'asc' },
       },
@@ -234,13 +240,37 @@ export async function finishChampionship(req: Request, res: Response) {
     data: { status: 'FINISHED' }
   })
 
-  // Apply points
-  const { rewardTournamentPositions } = await import('../utils/scoring')
+  // Apply points for all matches
+  const matches = await prisma.match.findMany({
+    where: { championshipId: id, status: 'FINISHED' }
+  })
+  
+  const { processMatchScore, rewardTournamentPositions } = await import('../utils/scoring')
+  
+  for (const match of matches) {
+    await processMatchScore(match.id)
+  }
+
+  // Reward podium positions
   await rewardTournamentPositions({
     championId,
     runnerUpId,
     thirdPlaceId,
     fourthPlaceId
+  })
+
+  // Store winner info in Results table as a PODIUM record
+  await prisma.result.create({
+    data: {
+      championshipId: id,
+      phase: 'PODIUM',
+      team1: championId || '',
+      team2: runnerUpId || '',
+      score1: 1,
+      score2: 2,
+      date: new Date(),
+      notes: thirdPlaceId || ''
+    }
   })
 
   return res.json(updated)

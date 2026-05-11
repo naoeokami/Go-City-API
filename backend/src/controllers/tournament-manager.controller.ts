@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma'
 import { AppError } from '../middlewares/error.middleware'
 
 export async function generateGroups(req: Request, res: Response) {
-    const championshipId = req.params.championshipId as string
+    const championshipId = req.params.id as string
     const { groupsCount, participantsPerGroup, advancePerGroup } = req.body
 
     const championship = await prisma.championship.findUnique({
@@ -50,36 +50,18 @@ export async function generateGroups(req: Request, res: Response) {
         })
     }
 
-    // Generate Round Robin matches for each group
+    // Manual match creation requested - skipping auto-generation of Round Robin matches
+    /*
     for (const group of groups) {
-        const groupRegs = await prisma.registration.findMany({
-            where: { groupId: group.id }
-        })
-
-        for (let i = 0; i < groupRegs.length; i++) {
-            for (let j = i + 1; j < groupRegs.length; j++) {
-                await prisma.match.create({
-                    data: {
-                        championshipId,
-                        groupId: group.id,
-                        phase: 'GROUP',
-                        date: championship.startDate,
-                        team1Id: championship.registrationType === 'TEAM' ? groupRegs[i].teamId : null,
-                        team2Id: championship.registrationType === 'TEAM' ? groupRegs[j].teamId : null,
-                        player1Id: championship.registrationType === 'INDIVIDUAL' ? groupRegs[i].userId : null,
-                        player2Id: championship.registrationType === 'INDIVIDUAL' ? groupRegs[j].userId : null,
-                        status: 'SCHEDULED'
-                    }
-                })
-            }
-        }
+        ...
     }
+    */
 
     return res.json({ message: 'Grupos e partidas gerados com sucesso', groupsCount: count })
 }
 
 export async function generateBrackets(req: Request, res: Response) {
-    const championshipId = req.params.championshipId as string
+    const championshipId = req.params.id as string
     
     const championship = await prisma.championship.findUnique({
         where: { id: championshipId },
@@ -116,34 +98,12 @@ export async function generateBrackets(req: Request, res: Response) {
     let currentRoundMatches = []
     let previousRoundMatches = []
 
+    // Manual match creation requested - skipping auto-generation of bracket matches
+    /*
     for (let r = roundsCount; r >= 1; r--) {
-        const matchesInRound = Math.pow(2, r - 1)
-        const roundMatches = []
-        
-        for (let i = 0; i < matchesInRound; i++) {
-            const match = await prisma.match.create({
-                data: {
-                    championshipId,
-                    phase: r === roundsCount ? 'FINAL' : r === roundsCount - 1 ? 'SEMIFINAL' : `ROUND_OF_${Math.pow(2, r)}`,
-                    round: r,
-                    bracketOrder: i,
-                    date: championship.startDate,
-                    status: 'SCHEDULED'
-                }
-            })
-            roundMatches.push(match)
-
-            // Link previous round matches to this one
-            if (previousRoundMatches.length > 0) {
-                const m1 = previousRoundMatches[i * 2]
-                const m2 = previousRoundMatches[i * 2 + 1]
-                if (m1) await prisma.match.update({ where: { id: m1.id }, data: { nextMatchId: match.id } })
-                if (m2) await prisma.match.update({ where: { id: m2.id }, data: { nextMatchId: match.id } })
-            }
-        }
-        previousRoundMatches = roundMatches
-        if (r === 1) currentRoundMatches = roundMatches
+        ...
     }
+    */
 
     // Now fill the first round with participants
     const firstRoundMatches = await prisma.match.findMany({
@@ -188,79 +148,109 @@ export async function generateBrackets(req: Request, res: Response) {
 }
 
 export async function getStandings(req: Request, res: Response) {
-    const championshipId = req.params.championshipId as string
+    const championshipId = req.params.id as string
     const standings = await calculateStandings(championshipId)
     return res.json(standings)
 }
 
 export async function calculateStandings(championshipId: string) {
-    const groups = await prisma.group.findMany({
-        where: { championshipId },
+    const championship = await prisma.championship.findUnique({
+        where: { id: championshipId },
         include: {
-            participants: {
-                include: {
-                    user: true,
-                    team: true
-                }
+            registrations: {
+                where: { status: 'APPROVED' },
+                include: { user: true, team: true }
             },
             matches: {
                 where: { status: 'FINISHED' }
-            }
-        }
-    })
-
-    const standings = groups.map(group => {
-        const table = group.participants.map(p => {
-            const participantId = p.teamId || p.userId
-            const participantMatches = group.matches.filter(m => 
-                m.team1Id === participantId || m.team2Id === participantId || 
-                m.player1Id === participantId || m.player2Id === participantId
-            )
-
-            let points = 0
-            let played = participantMatches.length
-            let won = 0, drawn = 0, lost = 0
-            let goalsFor = 0, goalsAgainst = 0
-
-            participantMatches.forEach(m => {
-                const isP1 = m.team1Id === participantId || m.player1Id === participantId
-                const myScore = isP1 ? m.score1 : m.score2
-                const opScore = isP1 ? m.score2 : m.score1
-
-                goalsFor += myScore
-                goalsAgainst += opScore
-
-                if (myScore > opScore) {
-                    points += 3
-                    won++
-                } else if (myScore === opScore) {
-                    points += 1
-                    drawn++
-                } else {
-                    lost++
+            },
+            groups: {
+                include: {
+                    participants: {
+                        include: { user: true, team: true }
+                    },
+                    matches: {
+                        where: { status: 'FINISHED' }
+                    }
                 }
-            })
-
-            return {
-                id: participantId,
-                name: p.team?.name || p.user.name,
-                points,
-                played,
-                won,
-                drawn,
-                lost,
-                goalsFor,
-                goalsAgainst,
-                goalDifference: goalsFor - goalsAgainst
             }
-        }).sort((a, b) => b.points - a.points || b.goalDifference - a.goalDifference || b.goalsFor - a.goalsFor)
+        }
 
-        return {
-            id: group.id,
-            name: group.name,
-            table
+    })
+
+    if (!championship) return []
+
+    // For ROUND_ROBIN, always use a single general classification
+    // For other formats, use groups if they exist
+    if (championship.format !== 'ROUND_ROBIN' && championship.groups.length > 0) {
+        return championship.groups.map(group => {
+            const table = group.participants.map(p => {
+                const participantId = p.teamId || p.userId
+                const participantMatches = group.matches.filter(m => 
+                    m.team1Id === participantId || m.team2Id === participantId || 
+                    m.player1Id === participantId || m.player2Id === participantId
+                )
+
+                return calculateParticipantStats(participantId, participantMatches, p)
+            }).sort((a, b) => b.points - a.points || b.goalDifference - a.goalDifference || b.goalsFor - a.goalsFor)
+
+            return { id: group.id, name: group.name, table }
+        })
+    }
+
+    // If ROUND_ROBIN or no groups yet, calculate as a single classification
+    const table = championship.registrations.map(p => {
+        const participantId = p.teamId || p.userId
+        const participantMatches = championship.matches.filter(m => 
+            m.team1Id === participantId || m.team2Id === participantId || 
+            m.player1Id === participantId || m.player2Id === participantId
+        )
+
+        return calculateParticipantStats(participantId, participantMatches, p)
+    }).sort((a, b) => b.points - a.points || b.goalDifference - a.goalDifference || b.goalsFor - a.goalsFor)
+
+    return [{
+        id: 'general',
+        name: championship.format === 'ROUND_ROBIN' ? 'Classificação Geral' : 'Classificação Provisória',
+        table
+    }]
+}
+
+function calculateParticipantStats(participantId: string, matches: any[], p: any) {
+    let points = 0
+    let played = matches.length
+    let won = 0, drawn = 0, lost = 0
+    let goalsFor = 0, goalsAgainst = 0
+
+    matches.forEach(m => {
+        const isP1 = m.team1Id === participantId || m.player1Id === participantId
+        const myScore = isP1 ? m.score1 : m.score2
+        const opScore = isP1 ? m.score2 : m.score1
+
+        goalsFor += myScore
+        goalsAgainst += opScore
+
+        if (myScore > opScore) {
+            points += 3
+            won++
+        } else if (myScore === opScore) {
+            points += 1
+            drawn++
+        } else {
+            lost++
         }
     })
 
-    return standings
+    return {
+        id: participantId,
+        name: p.team?.name || p.user?.name || '---',
+        points,
+        played,
+        won,
+        drawn,
+        lost,
+        goalsFor,
+        goalsAgainst,
+        goalDifference: goalsFor - goalsAgainst
+    }
 }

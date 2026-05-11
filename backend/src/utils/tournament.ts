@@ -23,15 +23,14 @@ export async function generateKnockoutMatches(championshipId: string, participan
       championshipId,
       team1Id: p1?.teamId || null,
       team2Id: p2?.teamId || null,
-      // If individual, we might need a different way to link users to matches
-      // but current Match model uses team1Id/team2Id. 
-      // Need to ensure Match can also handle direct Users if it's an individual tournament.
-      // For now, let's assume it's mostly Team based or that individual "teams" are created.
+      player1Id: !p1?.teamId ? p1?.userId : null,
+      player2Id: !p2?.teamId ? p2?.userId : null,
       phase: shuffled.length <= 2 ? 'Final' : 
              shuffled.length <= 4 ? 'Semifinal' : 
              shuffled.length <= 8 ? 'Quartas de Final' : 'Oitavas de Final',
       date: new Date(),
-      status: 'SCHEDULED' as const
+      status: 'SCHEDULED' as const,
+      isOfficial: true
     })
   }
 
@@ -51,20 +50,26 @@ export async function generateGroupMatches(championshipId: string, participants:
   
   // For each group, generate round-robin matches
   groups.forEach((group, groupIdx) => {
-    const groupName = `Grupo ${String.fromCharCode(65 + groupIdx)}`
+    const groupName = groupsCount === 1 ? 'Pontos Corridos' : `Grupo ${String.fromCharCode(65 + groupIdx)}`
     for (let i = 0; i < group.length; i++) {
       for (let j = i + 1; j < group.length; j++) {
+        const p1 = group[i]
+        const p2 = group[j]
         matches.push({
           championshipId,
-          team1Id: group[i].teamId || null,
-          team2Id: group[j].teamId || null,
+          team1Id: p1.teamId || null,
+          team2Id: p2.teamId || null,
+          player1Id: !p1.teamId ? p1.userId : null,
+          player2Id: !p2.teamId ? p2.userId : null,
           phase: groupName,
           date: new Date(),
-          status: 'SCHEDULED' as const
+          status: 'SCHEDULED' as const,
+          isOfficial: true
         })
       }
     }
   })
+
 
   return matches
 }

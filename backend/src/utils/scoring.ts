@@ -62,6 +62,15 @@ export async function processMatchScore(matchId: string) {
 
   if (!match) return
 
+  // Skip points if it belongs to an ongoing championship
+  if (match.championshipId) {
+    const champ = await prisma.championship.findUnique({ where: { id: match.championshipId } })
+    if (champ && champ.status !== 'FINISHED') {
+       // We don't award points now, they will be awarded when the championship is finished
+       return
+    }
+  }
+
   // Unofficial match penalty (50%)
   const multiplier = match.isOfficial ? 1 : 0.5
 
