@@ -18,8 +18,9 @@ export const POINTS = {
   CHAMPION: 1000,
 }
 
-export async function addPointsToUser(userId: string, points: number) {
+export async function addPointsToUser(userId: string, points: number, sport: string, isOfficial: boolean, matchId?: string) {
   try {
+    // 1. Update the global score for quick display
     await prisma.user.update({
       where: { id: userId },
       data: {
@@ -28,12 +29,23 @@ export async function addPointsToUser(userId: string, points: number) {
         }
       }
     })
+
+    // 2. Create a granular record for filtered rankings
+    await prisma.scoreEntry.create({
+      data: {
+        userId,
+        points,
+        sport,
+        isOfficial,
+        matchId
+      }
+    })
   } catch (error) {
     console.error(`Error adding points to user ${userId}:`, error)
   }
 }
 
-export async function addPointsToTeamMembers(teamId: string, points: number) {
+export async function addPointsToTeamMembers(teamId: string, points: number, sport: string, isOfficial: boolean, matchId?: string) {
   try {
     const members = await prisma.teamMember.findMany({
       where: { teamId, status: 'ACCEPTED' },
@@ -41,7 +53,7 @@ export async function addPointsToTeamMembers(teamId: string, points: number) {
     })
 
     for (const member of members) {
-      await addPointsToUser(member.userId, points)
+      await addPointsToUser(member.userId, points, sport, isOfficial, matchId)
     }
   } catch (error) {
     console.error(`Error adding points to team ${teamId}:`, error)
@@ -57,22 +69,17 @@ export async function processMatchScore(matchId: string) {
       player1: true,
       player2: true,
       participants: true,
+      championship: true,
     }
   })
 
   if (!match) return
 
-  // Skip points if it belongs to an ongoing championship
-  if (match.championshipId) {
-    const champ = await prisma.championship.findUnique({ where: { id: match.championshipId } })
-    if (champ && champ.status !== 'FINISHED') {
-       // We don't award points now, they will be awarded when the championship is finished
-       return
-    }
-  }
+  const sport = match.championship?.sport || match.sport || 'Geral'
+  const isOfficial = match.isOfficial || !!match.championshipId
 
   // Unofficial match penalty (50%)
-  const multiplier = match.isOfficial ? 1 : 0.5
+  const multiplier = isOfficial ? 1 : 0.5
 
   const awardPoints = async (side: 1 | 2, basePoints: number) => {
     const finalPoints = Math.round(basePoints * multiplier)
@@ -81,13 +88,12 @@ export async function processMatchScore(matchId: string) {
     const participants = match.participants.filter(p => p.side === side)
 
     if (teamId) {
-      await addPointsToTeamMembers(teamId, finalPoints)
+      await addPointsToTeamMembers(teamId, finalPoints, sport, isOfficial, matchId)
     } else if (soloPlayerId) {
-      await addPointsToUser(soloPlayerId, finalPoints)
+      await addPointsToUser(soloPlayerId, finalPoints, sport, isOfficial, matchId)
     } else if (participants.length > 0) {
-      // Award points to all mix participants on this side
       for (const p of participants) {
-        await addPointsToUser(p.userId, finalPoints)
+        await addPointsToUser(p.userId, finalPoints, sport, isOfficial, matchId)
       }
     }
   }
@@ -154,26 +160,38 @@ async function highlightMatch(matchId: string) {
   })
 }
 
-export async function rewardTournamentPositions(data: {
+export async function rewardTournamentPositions(championshipId: string, data: {
   championId?: string;
   runnerUpId?: string;
   thirdPlaceId?: string;
   fourthPlaceId?: string;
 }) {
-  if (data.championId) await addPointsToTeamMembers(data.championId, POINTS.CHAMPION)
-  if (data.runnerUpId) await addPointsToTeamMembers(data.runnerUpId, POINTS.RUNNER_UP)
-  if (data.thirdPlaceId) await addPointsToTeamMembers(data.thirdPlaceId, POINTS.THIRD_PLACE)
-  if (data.fourthPlaceId) await addPointsToTeamMembers(data.fourthPlaceId, POINTS.FOURTH_PLACE)
+  const champ = await prisma.championship.findUnique({ where: { id: championshipId } })
+  if (!champ) return
+
+  const sport = champ.sport
+  const isOfficial = true
+
+  if (data.championId) await addPointsToTeamMembers(data.championId, POINTS.CHAMPION, sport, isOfficial)
+  if (data.runnerUpId) await addPointsToTeamMembers(data.runnerUpId, POINTS.RUNNER_UP, sport, isOfficial)
+  if (data.thirdPlaceId) await addPointsToTeamMembers(data.thirdPlaceId, POINTS.THIRD_PLACE, sport, isOfficial)
+  if (data.fourthPlaceId) await addPointsToTeamMembers(data.fourthPlaceId, POINTS.FOURTH_PLACE, sport, isOfficial)
 }
 
-export async function rewardGroupStage(data: {
+export async function rewardGroupStage(championshipId: string, data: {
   advancingTeamIds: string[];
   groupLeaderIds: string[];
 }) {
+  const champ = await prisma.championship.findUnique({ where: { id: championshipId } })
+  if (!champ) return
+
+  const sport = champ.sport
+  const isOfficial = true
+
   for (const id of data.advancingTeamIds) {
-    await addPointsToTeamMembers(id, POINTS.GROUP_ADVANCE)
+    await addPointsToTeamMembers(id, POINTS.GROUP_ADVANCE, sport, isOfficial)
   }
   for (const id of data.groupLeaderIds) {
-    await addPointsToTeamMembers(id, POINTS.GROUP_LEADER)
+    await addPointsToTeamMembers(id, POINTS.GROUP_LEADER, sport, isOfficial)
   }
 }

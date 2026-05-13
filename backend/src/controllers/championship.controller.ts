@@ -252,7 +252,7 @@ export async function finishChampionship(req: Request, res: Response) {
   }
 
   // Reward podium positions
-  await rewardTournamentPositions({
+  await rewardTournamentPositions(id, {
     championId,
     runnerUpId,
     thirdPlaceId,

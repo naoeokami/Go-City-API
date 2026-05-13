@@ -18,6 +18,7 @@ const matchSchema = z.object({
   location:       z.string().optional(),
   phase:          z.string().optional(),
   isOfficial:     z.boolean().optional().default(true),
+  sport:          z.string().optional(),
 })
 
 export async function createMatch(req: Request, res: Response) {
@@ -41,6 +42,7 @@ export async function createMatch(req: Request, res: Response) {
       location:       data.location || null,
       phase:          data.phase || null,
       isOfficial:     data.isOfficial ?? true,
+      sport:          data.sport || null,
       participants: {
         create: [
           ...(data.side1UserIds?.map(userId => ({ userId, side: 1 })) || []),

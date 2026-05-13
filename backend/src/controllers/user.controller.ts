@@ -135,25 +135,57 @@ export async function searchUsers(req: Request, res: Response) {
 }
 
 export async function getRanking(req: Request, res: Response) {
-  const { limit = '50' } = req.query
+  const { limit = '50', sport, category } = req.query as { limit?: string, sport?: string, category?: string }
 
-  const users = await prisma.user.findMany({
-    orderBy: { score: 'desc' },
+  // If no filters, return global ranking (optimized)
+  if (!sport && !category) {
+    const users = await prisma.user.findMany({
+      orderBy: { score: 'desc' },
+      take: Number(limit),
+      select: {
+        id: true, name: true, username: true,
+        avatarUrl: true, userType: true, isVerified: true,
+        score: true, city: true, state: true
+      }
+    })
+    return res.json(users)
+  }
+
+  // With filters, we aggregate from score_entries
+  const where: any = {}
+  if (sport) where.sport = sport
+  if (category === 'COMPETITIVE') where.isOfficial = true
+  if (category === 'CASUAL') where.isOfficial = false
+
+  const aggregated = await prisma.scoreEntry.groupBy({
+    by: ['userId'],
+    where,
+    _sum: { points: true },
+    orderBy: { _sum: { points: 'desc' } },
     take: Number(limit),
+  })
+
+  // Fetch user details for the top ranked
+  const userIds = aggregated.map(a => a.userId)
+  const users = await prisma.user.findMany({
+    where: { id: { in: userIds } },
     select: {
-      id: true,
-      name: true,
-      username: true,
-      avatarUrl: true,
-      userType: true,
-      isVerified: true,
-      score: true,
-      city: true,
-      state: true
+      id: true, name: true, username: true,
+      avatarUrl: true, userType: true, isVerified: true,
+      city: true, state: true
     }
   })
 
-  return res.json(users)
+  // Map sums back to users and sort again
+  const result = aggregated.map(a => {
+    const user = users.find(u => u.id === a.userId)
+    return {
+      ...user,
+      score: a._sum.points || 0
+    }
+  }).sort((a, b) => b.score - a.score)
+
+  return res.json(result)
 }
 
 export async function getSuggestions(req: Request, res: Response) {
